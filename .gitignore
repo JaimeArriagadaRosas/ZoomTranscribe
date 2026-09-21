@@ -1,0 +1,8 @@
+.venv/ 
+temp/ 
+downloads/ 
+transcripts/ 
+logs/ 
+__pycache__/ 
+metadata/records/*.json 
+metadata/download-archive.txt 

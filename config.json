@@ -1,0 +1,12 @@
+{
+  "whisper_model": "medium",
+  "language": "es",
+  "browser": "opera",
+  "prefer_gpu": true,
+  "keep_video": true,
+  "delete_temporary_audio": true,
+  "expected_url_count": null,
+  "minimum_free_space_gb": 10,
+  "minimum_yt_dlp_version": "2025.01.26",
+  "max_video_height": 720
+}
