@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
+from .auth import AuthSession
 from .metadata import RecordingStore
 from .utils import atomic_write_json, safe_component, to_relative, yt_dlp_command
 
@@ -42,7 +43,7 @@ def build_yt_dlp_command(
     record: dict,
     config: dict,
     use_archive: bool = True,
-    browser_override: str | None = None,
+    auth: AuthSession | None = None,
 ) -> list[str]:
     rid = record["id"]
     temp_dir = root.resolve() / "temp" / rid
@@ -53,10 +54,7 @@ def build_yt_dlp_command(
         selector = f"bestvideo[height<={height}]+bestaudio/best[height<={height}]/best"
     else:
         selector = "bestaudio/best"
-    browser = browser_override or str(config.get("browser", "chrome"))
     command = yt_dlp_command(
-        "--cookies-from-browser",
-        browser,
         "--continue",
         "--no-overwrites",
         "--windows-filenames",
@@ -66,6 +64,8 @@ def build_yt_dlp_command(
         "--format",
         selector,
     )
+    if auth is not None and auth.mode == "cookies_file" and auth.cookies_file:
+        command.extend(["--cookies", str(root.resolve() / auth.cookies_file)])
     if config.get("keep_video", True):
         command.extend(["--merge-output-format", "mp4"])
     command.extend(
@@ -83,15 +83,6 @@ def build_yt_dlp_command(
         command.extend(["--download-archive", str(root.resolve() / "metadata" / "download-archive.txt")])
     command.append(record["url"])
     return command
-
-
-def _browser_candidates(config: dict) -> list[str]:
-    preferred = str(config.get("browser", "chrome")).strip().lower() or "chrome"
-    candidates: list[str] = []
-    for browser in (preferred, "chrome", "opera", "edge", "firefox"):
-        if browser not in candidates:
-            candidates.append(browser)
-    return candidates
 
 
 def probe_media(path: Path, runner: Callable = subprocess.run) -> dict:
@@ -131,7 +122,7 @@ def classify_download_error(output: str) -> DownloadError:
         for marker in ("could not copy", "cannot access", "being used", "database is locked", "permission denied")
     ):
         return DownloadError(
-            "opera_cookies_locked",
+            "browser_cookies_locked",
             "No se pudo acceder a la base de cookies del navegador; ciérralo completamente y vuelve a ejecutar.",
         )
     if any(marker in lowered for marker in ("drm", "encrypted media", "protected content")):
@@ -245,6 +236,7 @@ def download_recording(
     logger,
     runner: Callable = subprocess.run,
     position: int = 0,
+    auth: AuthSession | None = None,
 ) -> DownloadResult:
     root = root.resolve()
     current = store.load(record["id"])
@@ -258,50 +250,17 @@ def download_recording(
     temp_dir = root / "temp" / current["id"]
     temp_dir.mkdir(parents=True, exist_ok=True)
     try:
-        completed = None
-        media = None
-        successful_browser = None
-        last_error: DownloadProcessError | None = None
-        locked_error: DownloadProcessError | None = None
-
-        for browser in _browser_candidates(config):
-            try:
-                logger.info("Intentando autenticación de Zoom con navegador: %s", browser)
-                completed = _run_ytdlp(
-                    build_yt_dlp_command(root, current, config, True, browser_override=browser),
-                    current,
-                    logger,
-                    runner,
-                )
-                successful_browser = browser
-                media = _media_from_output(root, temp_dir, completed.stdout or "")
-                break
-            except DownloadProcessError as exc:
-                last_error = exc
-                classified = classify_download_error(exc.output)
-                if classified.kind == "opera_cookies_locked":
-                    locked_error = exc
-                logger.warning(
-                    "Intento con %s falló (%s); probando siguiente navegador si corresponde",
-                    browser,
-                    classified.kind,
-                )
-                if classified.kind not in {"opera_cookies_locked", "authentication_failed", "yt_dlp_failed"}:
-                    raise
-
-        if completed is None:
-            raise locked_error or last_error or DownloadProcessError("No fue posible ejecutar yt-dlp con ningún navegador disponible")
-
+        completed = _run_ytdlp(
+            build_yt_dlp_command(root, current, config, True, auth=auth),
+            current,
+            logger,
+            runner,
+        )
+        media = _media_from_output(root, temp_dir, completed.stdout or "")
         if media is None:
             logger.warning("El historial indicó una descarga previa, pero no existe el archivo local; reintentando sin archive")
             completed = _run_ytdlp(
-                build_yt_dlp_command(
-                    root,
-                    current,
-                    config,
-                    False,
-                    browser_override=successful_browser,
-                ),
+                build_yt_dlp_command(root, current, config, False, auth=auth),
                 current,
                 logger,
                 runner,
