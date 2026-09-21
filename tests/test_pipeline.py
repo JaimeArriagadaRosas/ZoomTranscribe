@@ -68,6 +68,9 @@ class PipelineTests(unittest.TestCase):
             transcribe=transcribe,
             probe_media=self.no_probe,
             validate_transcripts=self.validate_outputs,
+            ensure_audio=lambda root, source, logger: source.with_suffix(".mp3").relative_to(root).as_posix(),
+            audio_valid=lambda root, record: True,
+            sync_final=lambda root, store, urls: [],
         )
 
     def test_parser_accepts_windows_style_limit_and_modes(self):
