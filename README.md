@@ -8,7 +8,7 @@ El proyecto no contiene cookies, contraseñas ni mecanismos para evadir restricc
 
 - Windows 10 u 11.
 - Python 3.10 o posterior.
-- Opera con una sesión de UNAB que tenga acceso a las grabaciones.
+- Chrome (preferido) u otro navegador compatible con una sesión que tenga acceso a las grabaciones.
 - `ffmpeg` y `ffprobe` disponibles en `PATH`.
 - Al menos 10 GiB libres por defecto. Este umbral puede cambiarse en `config.json`.
 - Conexión a Internet para las descargas y, si no está en caché, para obtener el modelo de Whisper.
@@ -54,9 +54,9 @@ ffprobe -version
 
 ```json
 {
-  "whisper_model": "large-v3",
+  "whisper_model": "medium",
   "language": "es",
-  "browser": "opera",
+  "browser": "chrome",
   "prefer_gpu": true,
   "keep_video": true,
   "delete_temporary_audio": true,
@@ -67,7 +67,7 @@ ffprobe -version
 }
 ```
 
-`expected_url_count: null` permite añadir nuevas clases. Si se configura un entero positivo, el preboot exige exactamente esa cantidad.
+`expected_url_count: null` permite añadir nuevas clases. La configuración actual usa `medium`, Chrome como primera sesión de autenticación y un batch conservador para GPU de 4 GB. Si se configura un entero positivo, el preboot exige exactamente esa cantidad.
 
 `urls.txt` debe contener una URL por línea. El pipeline acepta únicamente URLs de `unab-cl.zoom.us` cuya ruta contenga `/rec/play/`, y rechaza duplicados.
 
@@ -158,7 +158,7 @@ Puede volver a ejecutar el mismo comando después de un cierre o fallo:
 - una clase fallida no impide procesar las demás seleccionadas;
 - el video descargado nunca se elimina automáticamente.
 
-Si el archivo directo no puede decodificarse, se crea un FLAC temporal mono a 16 kHz. El FLAC solo se elimina después de validar correctamente las tres transcripciones.
+El flujo automático conserva el video, genera además un MP3 permanente en `audio/` y usa un FLAC temporal mono a 16 kHz para Whisper. El FLAC solo se elimina después de validar correctamente las tres transcripciones.
 
 ## CUDA
 
@@ -170,18 +170,22 @@ CPU con `large-v3` puede ser considerablemente más lenta. Puede cambiar el mode
 
 ## Opera y cookies
 
-Si aparece un error indicando que la base de cookies está bloqueada:
+Si aparece un error indicando que la base de cookies está bloqueada, el modo interactivo permite reintentar la misma clase. Antes de pulsar ENTER:
 
-1. cierre completamente Opera;
-2. compruebe en el Administrador de tareas que no queden procesos de Opera;
+1. cierre completamente Chrome/Opera;
+2. compruebe en el Administrador de tareas que no queden procesos del navegador;
 3. ejecute nuevamente el mismo comando.
 
 El pipeline no copia ni modifica el perfil de Opera. Si Zoom rechaza el acceso normal de la sesión o la grabación tiene restricciones incompatibles, registra el fallo y se detiene para esa clase.
 
 ## Resultados
 
+La opción 3 del menú ejecuta el flujo completo: descarga, MP3, transcripción y publicación de una copia TXT ordenada para Drive.
+
 ```text
 downloads/                  videos descargados
+audio/                      MP3 permanentes
+final_transcripts/          TXT finales numerados + 00_INDICE.txt
 transcripts/txt/            texto con timestamps
 transcripts/srt/            subtítulos SRT
 transcripts/vtt/            subtítulos WebVTT
