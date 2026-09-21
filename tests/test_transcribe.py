@@ -122,12 +122,22 @@ class TranscriptionTests(unittest.TestCase):
             behavior = "inference-fails" if device == "cuda" else "success"
             return FakeModel(device, behavior, calls)
 
+        def runner(command, **kwargs):
+            Path(command[-1]).write_bytes(b"flac bytes")
+            return CompletedProcess(command, 0, "", "")
+
         result = transcribe_recording(
-            self.root, self.store, self.record, self.config, self.logger, model_factory=factory
+            self.root,
+            self.store,
+            self.record,
+            self.config,
+            self.logger,
+            model_factory=factory,
+            runner=runner,
         )
         self.assertTrue(result.ok, result.error_message)
         self.assertEqual((result.device, result.compute_type), ("cpu", "int8"))
-        self.assertEqual(created, [("large-v3", "cuda", "float16"), ("large-v3", "cpu", "int8")])
+        self.assertEqual(created, [("large-v3", "cuda", "int8_float16"), ("large-v3", "cpu", "int8")])
         stored = self.store.load(self.rid)
         self.assertEqual(stored["state"], "completed")
         self.assertIn("CUDA driver error", stored["whisper"]["fallback_reason"])
