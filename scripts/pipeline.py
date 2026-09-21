@@ -25,6 +25,9 @@ class PipelineDependencies:
     transcribe: Callable
     probe_media: Callable
     validate_transcripts: Callable
+    ensure_audio: Callable = ensure_mp3
+    audio_valid: Callable = audio_is_valid
+    sync_final: Callable = sync_final_transcripts
 
 
 def default_dependencies() -> PipelineDependencies:
@@ -34,6 +37,9 @@ def default_dependencies() -> PipelineDependencies:
         transcribe=transcribe_recording,
         probe_media=probe_media,
         validate_transcripts=validate_transcript_set,
+        ensure_audio=ensure_mp3,
+        audio_valid=audio_is_valid,
+        sync_final=sync_final_transcripts,
     )
 
 
@@ -308,14 +314,14 @@ def _run_pipeline_core(
             prefix = f"[{position}/{len(urls)}]"
             try:
                 current = store.load(rid)
-                if audio_is_valid(root, current):
+                if dependencies.audio_valid(root, current):
                     print(f"{prefix} MP3 existente; se conserva.")
                     continue
                 source = _download_path(root, current)
                 if source is None:
                     continue
                 print(f"{prefix} Generando MP3...")
-                relative_audio = ensure_mp3(root, source, logger)
+                relative_audio = dependencies.ensure_audio(root, source, logger)
                 audio = {"file": relative_audio, "validated": True}
                 store.transition(rid, current.get("state", "downloaded"), audio=audio)
                 print(f"{prefix} MP3 listo.")
@@ -377,7 +383,7 @@ def _run_pipeline_core(
 
     if not interrupted and mode in ("transcribe", "full"):
         try:
-            published = sync_final_transcripts(root, store, urls)
+            published = dependencies.sync_final(root, store, urls)
             print(f"\nTranscripciones finales listas para Drive: {len(published)}/{len(urls)}")
             print("Carpeta: final_transcripts/")
         except Exception as exc:
