@@ -1,10 +1,6 @@
 # MediaTranscribe
 
-MediaTranscribe es una aplicación local para **descargar y transcribir contenido al que el usuario ya tiene acceso**. La versión 2 trabaja con una URL por vez y organiza cada ejecución como un trabajo numerado.
-
-La rama `feature/modular-downloader-v2` introduce dos proveedores:
-
-- **Zoom**: grabaciones públicas o institucionales, con reutilización de sesiones locales autorizadas cuando la grabación requiere autenticación.
+MediaTranscribe es una aplicación local para **descargar y transcribir contenido al que el usuario ya tiene acceso**. - **Zoom**: grabaciones públicas o institucionales, con reutilización de sesiones locales autorizadas cuando la grabación requiere autenticación.
 - **YouTube**: videos públicos y, cuando sea necesario, acceso mediante una sesión local autorizada.
 
 Después de descargar, ambos proveedores usan el mismo pipeline:
@@ -236,7 +232,3 @@ FFmpeg/ffprobe deben estar disponibles en `PATH`.
 MediaTranscribe no debe almacenar contraseñas.
 
 Los datos sensibles de sesión quedan bajo `private/`, que está ignorado por Git. Los videos, MP3, transcripciones, logs y metadata de trabajos también quedan fuera del repositorio.
-
-## Estado de esta rama
-
-Esta rama es la reestructuración modular de la aplicación. El pipeline de producción utilizado para las 12 clases originales permanece en `main` mientras la versión 2 se desarrolla y valida de forma independiente.
