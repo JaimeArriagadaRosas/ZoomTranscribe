@@ -12,6 +12,8 @@ from typing import Callable
 from .check_dependencies import load_and_validate_urls, load_config, run_preboot
 from .download import download_recording, probe_media
 from .metadata import RecordingStore
+from .media import audio_is_valid, ensure_mp3
+from .finalize import sync_final_transcripts
 from .transcribe import transcribe_recording, validate_transcript_set
 from .utils import recording_id, resolve_relative
 
@@ -278,6 +280,38 @@ def _run_pipeline_core(
                     pass
                 print(f"{prefix} Fallo inesperado; se continúa con la siguiente.")
 
+    if not interrupted and mode in ("download", "full"):
+        records = [store.load(recording_id(url)) for url in urls]
+        downloadable = [
+            record
+            for record in records
+            if _download_valid(root, record, dependencies.probe_media)
+        ]
+        if downloadable:
+            print(f"\n--- GENERANDO MP3 ({len(downloadable)} disponibles) ---")
+        for record in downloadable:
+            rid = record["id"]
+            position = urls.index(record["url"]) + 1
+            prefix = f"[{position}/{len(urls)}]"
+            try:
+                current = store.load(rid)
+                if audio_is_valid(root, current):
+                    print(f"{prefix} MP3 existente; se conserva.")
+                    continue
+                source = _download_path(root, current)
+                if source is None:
+                    continue
+                print(f"{prefix} Generando MP3...")
+                relative_audio = ensure_mp3(root, source, logger)
+                audio = {"file": relative_audio, "validated": True}
+                store.transition(rid, current.get("state", "downloaded"), audio=audio)
+                print(f"{prefix} MP3 listo.")
+            except Exception as exc:
+                message = str(exc).replace(str(root), "<PROJECT>")[:4000]
+                failures.append((rid, f"MP3: {message}"))
+                logger.exception("No se pudo generar MP3 para %s", rid)
+                print(f"{prefix} Falló la generación de MP3; la transcripción continuará.")
+
     if not interrupted and mode in ("transcribe", "full"):
         records = [store.load(recording_id(url)) for url in urls]
         to_transcribe = select_records(records, "transcribe", args.limit, root, dependencies.probe_media)
@@ -327,6 +361,17 @@ def _run_pipeline_core(
                 except Exception:
                     pass
                 print(f"{prefix} Fallo inesperado; se continúa con la siguiente.")
+
+    if not interrupted and mode in ("transcribe", "full"):
+        try:
+            published = sync_final_transcripts(root, store, urls)
+            print(f"\nTranscripciones finales listas para Drive: {len(published)}/{len(urls)}")
+            print("Carpeta: final_transcripts/")
+        except Exception as exc:
+            message = str(exc).replace(str(root), "<PROJECT>")[:4000]
+            failures.append(("final_transcripts", message))
+            logger.exception("No se pudo publicar la carpeta final de transcripciones")
+            print(f"[ERROR] No se pudo preparar final_transcripts/: {message}")
 
     current_records = [store.load(recording_id(url)) for url in urls]
     complete_now = 0
