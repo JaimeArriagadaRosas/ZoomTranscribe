@@ -262,6 +262,7 @@ def download_recording(
         media = None
         successful_browser = None
         last_error: DownloadProcessError | None = None
+        locked_error: DownloadProcessError | None = None
 
         for browser in _browser_candidates(config):
             try:
@@ -278,6 +279,8 @@ def download_recording(
             except DownloadProcessError as exc:
                 last_error = exc
                 classified = classify_download_error(exc.output)
+                if classified.kind == "opera_cookies_locked":
+                    locked_error = exc
                 logger.warning(
                     "Intento con %s falló (%s); probando siguiente navegador si corresponde",
                     browser,
@@ -287,7 +290,7 @@ def download_recording(
                     raise
 
         if completed is None:
-            raise last_error or DownloadProcessError("No fue posible ejecutar yt-dlp con ningún navegador disponible")
+            raise locked_error or last_error or DownloadProcessError("No fue posible ejecutar yt-dlp con ningún navegador disponible")
 
         if media is None:
             logger.warning("El historial indicó una descarga previa, pero no existe el archivo local; reintentando sin archive")
