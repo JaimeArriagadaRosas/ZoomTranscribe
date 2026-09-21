@@ -6,3 +6,7 @@ logs/
 __pycache__/ 
 metadata/records/*.json 
 metadata/download-archive.txt 
+audio/
+final_transcripts/
+*.mp3
+*.flac
