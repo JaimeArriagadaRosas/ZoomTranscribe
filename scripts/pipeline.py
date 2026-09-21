@@ -241,6 +241,8 @@ def _run_pipeline_core(
     interrupted = False
 
     auth_session = None
+    auth_error = None
+    downloads_enabled = True
     if mode in ("download", "full"):
         to_download = select_records(records, "download", args.limit, root, dependencies.probe_media)
         if to_download:
@@ -258,14 +260,18 @@ def _run_pipeline_core(
                     print(f"Autenticación: sesión preparada ({auth_session.source}).")
                     print("Las cookies se reutilizarán durante este lote; no se volverá a abrir la base del navegador.")
             except AuthFailure as exc:
-                print(f"[ERROR] {exc}")
+                auth_error = str(exc)
+                downloads_enabled = False
+                print(f"[ERROR DE AUTENTICACIÓN] {exc}")
+                print("No se intentarán las otras URLs con el mismo error.")
+                if mode == "full":
+                    print("Se continuará con MP3/transcripción de cualquier video que ya exista localmente.")
                 logger.error("Autenticación de Zoom fallida: %s", exc)
                 for detail in exc.attempts:
                     logger.debug("Auth intento: %s", detail)
-                return 3
-        if to_download:
+        if to_download and downloads_enabled:
             print(f"\n--- INICIANDO FASE DE DESCARGAS ({len(to_download)} pendientes) ---")
-        for record in to_download:
+        for record in (to_download if downloads_enabled else []):
             rid = record["id"]
             position = urls.index(record["url"]) + 1
             prefix = f"[{position}/{len(urls)}]"
@@ -402,6 +408,9 @@ def _run_pipeline_core(
             failures.append(("final_transcripts", message))
             logger.exception("No se pudo publicar la carpeta final de transcripciones")
             print(f"[ERROR] No se pudo preparar final_transcripts/: {message}")
+
+    if auth_error:
+        failures.append(("auth", auth_error))
 
     current_records = [store.load(recording_id(url)) for url in urls]
     complete_now = 0
