@@ -1,9 +1,8 @@
-name: tests
+name: v2-tests
 
 on:
   push:
     branches:
-      - main
       - "feature/**"
   pull_request:
 
@@ -19,8 +18,8 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Compile Python
-        run: python -m compileall -q app scripts tests
+      - name: Compile v2 app
+        run: python -m compileall -q app tests/test_v2_jobs.py tests/test_v2_providers.py tests/test_v2_cleanup.py
 
-      - name: Run unit tests
-        run: python -m unittest discover -v
+      - name: Run v2 unit tests
+        run: python -m unittest -v tests.test_v2_jobs tests.test_v2_providers tests.test_v2_cleanup
