@@ -81,7 +81,6 @@ class JobStore:
         directory = self.output_dir / slug
         directory.mkdir(parents=True, exist_ok=True)
         metadata = {
-            "schema_version": 2,
             "number": number,
             "provider": provider,
             "url": url.strip(),
