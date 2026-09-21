@@ -42,6 +42,7 @@ def build_yt_dlp_command(
     record: dict,
     config: dict,
     use_archive: bool = True,
+    browser_override: str | None = None,
 ) -> list[str]:
     rid = record["id"]
     temp_dir = root.resolve() / "temp" / rid
@@ -52,9 +53,10 @@ def build_yt_dlp_command(
         selector = f"bestvideo[height<={height}]+bestaudio/best[height<={height}]/best"
     else:
         selector = "bestaudio/best"
+    browser = browser_override or str(config.get("browser", "chrome"))
     command = yt_dlp_command(
         "--cookies-from-browser",
-        str(config.get("browser", "opera")),
+        browser,
         "--continue",
         "--no-overwrites",
         "--windows-filenames",
@@ -81,6 +83,15 @@ def build_yt_dlp_command(
         command.extend(["--download-archive", str(root.resolve() / "metadata" / "download-archive.txt")])
     command.append(record["url"])
     return command
+
+
+def _browser_candidates(config: dict) -> list[str]:
+    preferred = str(config.get("browser", "chrome")).strip().lower() or "chrome"
+    candidates: list[str] = []
+    for browser in (preferred, "chrome", "opera", "edge", "firefox"):
+        if browser not in candidates:
+            candidates.append(browser)
+    return candidates
 
 
 def probe_media(path: Path, runner: Callable = subprocess.run) -> dict:
@@ -121,7 +132,7 @@ def classify_download_error(output: str) -> DownloadError:
     ):
         return DownloadError(
             "opera_cookies_locked",
-            "No se pudo acceder a las cookies; puede ser necesario cerrar Opera y volver a ejecutar.",
+            "No se pudo acceder a la base de cookies del navegador; ciérralo completamente y vuelve a ejecutar.",
         )
     if any(marker in lowered for marker in ("drm", "encrypted media", "protected content")):
         return DownloadError(
@@ -247,11 +258,51 @@ def download_recording(
     temp_dir = root / "temp" / current["id"]
     temp_dir.mkdir(parents=True, exist_ok=True)
     try:
-        completed = _run_ytdlp(build_yt_dlp_command(root, current, config, True), current, logger, runner)
-        media = _media_from_output(root, temp_dir, completed.stdout or "")
+        completed = None
+        media = None
+        successful_browser = None
+        last_error: DownloadProcessError | None = None
+
+        for browser in _browser_candidates(config):
+            try:
+                logger.info("Intentando autenticación de Zoom con navegador: %s", browser)
+                completed = _run_ytdlp(
+                    build_yt_dlp_command(root, current, config, True, browser_override=browser),
+                    current,
+                    logger,
+                    runner,
+                )
+                successful_browser = browser
+                media = _media_from_output(root, temp_dir, completed.stdout or "")
+                break
+            except DownloadProcessError as exc:
+                last_error = exc
+                classified = classify_download_error(exc.output)
+                logger.warning(
+                    "Intento con %s falló (%s); probando siguiente navegador si corresponde",
+                    browser,
+                    classified.kind,
+                )
+                if classified.kind not in {"opera_cookies_locked", "authentication_failed", "yt_dlp_failed"}:
+                    raise
+
+        if completed is None:
+            raise last_error or DownloadProcessError("No fue posible ejecutar yt-dlp con ningún navegador disponible")
+
         if media is None:
             logger.warning("El historial indicó una descarga previa, pero no existe el archivo local; reintentando sin archive")
-            completed = _run_ytdlp(build_yt_dlp_command(root, current, config, False), current, logger, runner)
+            completed = _run_ytdlp(
+                build_yt_dlp_command(
+                    root,
+                    current,
+                    config,
+                    False,
+                    browser_override=successful_browser,
+                ),
+                current,
+                logger,
+                runner,
+            )
             media = _media_from_output(root, temp_dir, completed.stdout or "")
         if media is None:
             raise DownloadProcessError("yt-dlp terminó sin producir un archivo multimedia local")
