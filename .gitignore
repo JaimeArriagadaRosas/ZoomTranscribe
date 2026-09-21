@@ -10,3 +10,4 @@ audio/
 final_transcripts/
 *.mp3
 *.flac
+private/
