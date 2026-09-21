@@ -1,7 +1,9 @@
 {
   "whisper_model": "medium",
   "language": "es",
-  "browser": "chrome",
+  "browser": "opera",
+  "browser_priority": ["opera", "chrome", "edge", "firefox"],
+  "cookies_file": "private/zoom.cookies.txt",
   "prefer_gpu": true,
   "keep_video": true,
   "delete_temporary_audio": true,
