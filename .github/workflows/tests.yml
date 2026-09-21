@@ -2,7 +2,9 @@ name: tests
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - "feature/**"
   pull_request:
 
 jobs:
@@ -18,7 +20,7 @@ jobs:
           python-version: "3.11"
 
       - name: Compile Python
-        run: python -m compileall -q scripts tests
+        run: python -m compileall -q app scripts tests
 
       - name: Run unit tests
         run: python -m unittest discover -v
