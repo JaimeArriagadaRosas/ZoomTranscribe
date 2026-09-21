@@ -244,6 +244,19 @@ def _run_pipeline_core(
                 print(f"{prefix} Descargando {rid}...")
                 logger.info("%s descarga iniciada", rid)
                 result = dependencies.download(root, store, current, config, logger, position=position)
+                if (
+                    not result.ok
+                    and result.error_kind == "opera_cookies_locked"
+                    and sys.stdin.isatty()
+                ):
+                    print(f"{prefix} El navegador mantiene bloqueada su base de cookies.")
+                    print("Cierra completamente Chrome/Opera y presiona ENTER para reintentar esta misma clase.")
+                    try:
+                        input()
+                        current = store.load(rid)
+                        result = dependencies.download(root, store, current, config, logger, position=position)
+                    except (EOFError, KeyboardInterrupt):
+                        pass
                 if not result.ok:
                     reason = result.error_message or "descarga fallida"
                     failures.append((rid, reason))
