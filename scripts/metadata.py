@@ -29,9 +29,11 @@ INDEX_COLUMNS = [
     "date",
     "duration",
     "download_file",
+    "audio_file",
     "txt",
     "srt",
     "vtt",
+    "final_transcript",
     "state",
     "error",
     "whisper_model",
@@ -74,6 +76,8 @@ class RecordingStore:
             "updated_at": now,
             "attempts": {"download": 0, "transcription": 0},
             "download": {"file": None, "info": None, "validated": False},
+            "audio": {"file": None, "validated": False},
+            "final_transcript": None,
             "transcripts": {"txt": None, "srt": None, "vtt": None, "validated": False},
             "whisper": {
                 "model": None,
@@ -134,6 +138,8 @@ class RecordingStore:
         candidates = [
             record.get("download", {}).get("file"),
             record.get("download", {}).get("info"),
+            record.get("audio", {}).get("file"),
+            record.get("final_transcript"),
             record.get("transcripts", {}).get("txt"),
             record.get("transcripts", {}).get("srt"),
             record.get("transcripts", {}).get("vtt"),
@@ -190,6 +196,7 @@ class RecordingStore:
     @classmethod
     def _index_row(cls, record: dict) -> dict:
         download = record.get("download") or {}
+        audio = record.get("audio") or {}
         transcripts = record.get("transcripts") or {}
         whisper = record.get("whisper") or {}
         return {
@@ -199,9 +206,11 @@ class RecordingStore:
             "date": record.get("date") or "",
             "duration": record.get("duration") if record.get("duration") is not None else "",
             "download_file": download.get("file") or "",
+            "audio_file": audio.get("file") or "",
             "txt": transcripts.get("txt") or "",
             "srt": transcripts.get("srt") or "",
             "vtt": transcripts.get("vtt") or "",
+            "final_transcript": record.get("final_transcript") or "",
             "state": record.get("state") or "",
             "error": cls._error_text(record),
             "whisper_model": whisper.get("model") or "",
