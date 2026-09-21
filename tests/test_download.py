@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 from subprocess import CompletedProcess
 
+from scripts.auth import AuthSession
 from scripts.download import (
     build_yt_dlp_command,
     classify_download_error,
@@ -35,10 +36,20 @@ class DownloadTests(unittest.TestCase):
     def tearDown(self):
         self.temporary.cleanup()
 
-    def test_command_uses_opera_archive_resume_windows_names_and_height_cap(self):
-        command = build_yt_dlp_command(self.root, self.record, self.config)
+    def test_command_uses_cookie_file_archive_resume_windows_names_and_height_cap(self):
+        private = self.root / "private"
+        private.mkdir(parents=True, exist_ok=True)
+        cookie_file = private / "zoom.cookies.txt"
+        cookie_file.write_text("# Netscape HTTP Cookie File\n", encoding="utf-8")
+        command = build_yt_dlp_command(
+            self.root,
+            self.record,
+            self.config,
+            auth=AuthSession(mode="cookies_file", cookies_file="private/zoom.cookies.txt"),
+        )
         self.assertEqual(command[:3], [sys.executable, "-m", "yt_dlp"])
-        self.assertEqual(command[command.index("--cookies-from-browser") + 1], "opera")
+        self.assertIn("--cookies", command)
+        self.assertNotIn("--cookies-from-browser", command)
         self.assertIn("--download-archive", command)
         self.assertIn("--continue", command)
         self.assertIn("--windows-filenames", command)
@@ -77,7 +88,7 @@ class DownloadTests(unittest.TestCase):
         error = classify_download_error(
             "ERROR: Could not copy Chrome cookie database. The process cannot access the file"
         )
-        self.assertEqual(error.kind, "opera_cookies_locked")
+        self.assertEqual(error.kind, "browser_cookies_locked")
         self.assertIn("base de cookies", error.message)
 
     def test_success_moves_media_and_source_metadata_to_stable_relative_paths(self):
