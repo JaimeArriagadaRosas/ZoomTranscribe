@@ -108,17 +108,20 @@ def transcribe_audio(audio: Path, job_dir: Path, config: dict, logger) -> dict:
     prefer_gpu = bool(config.get("prefer_gpu", True))
     batch = max(1, int(config.get("batch_size", 4)))
 
-    attempts = []
+    attempts: list[tuple[str, str, int]] = []
     if prefer_gpu:
-        attempts.extend([
-            ("cuda", "int8_float16", batch),
-            ("cuda", "int8_float16", 2),
-            ("cuda", "int8_float16", 1),
-        ])
+        seen_batches: set[int] = set()
+        for candidate in (batch, 2, 1):
+            if candidate >= 1 and candidate not in seen_batches:
+                attempts.append(("cuda", "int8_float16", candidate))
+                seen_batches.add(candidate)
     attempts.append(("cpu", "int8", 1))
 
     last_error: Exception | None = None
+    skip_remaining_cuda = False
     for device, compute_type, candidate_batch in attempts:
+        if device == "cuda" and skip_remaining_cuda:
+            continue
         try:
             logger.info(
                 "Whisper %s %s/%s batch=%s",
@@ -167,7 +170,7 @@ def transcribe_audio(audio: Path, job_dir: Path, config: dict, logger) -> dict:
                     "cublas_status_alloc_failed", "failed to allocate",
                 ))
                 if not memory_related:
-                    attempts = [attempt for attempt in attempts if attempt[0] != "cuda"] + [("cpu", "int8", 1)]
+                    skip_remaining_cuda = True
             continue
 
     raise RuntimeError(f"No fue posible transcribir el audio: {last_error}")
