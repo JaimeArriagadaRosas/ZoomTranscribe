@@ -7,6 +7,7 @@ import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
+from scripts.auth import AuthSession
 from scripts.check_dependencies import PrebootReport
 from scripts.download import DownloadResult
 from scripts.metadata import RecordingStore
@@ -71,6 +72,7 @@ class PipelineTests(unittest.TestCase):
             ensure_audio=lambda root, source, logger: source.with_suffix(".mp3").relative_to(root).as_posix(),
             audio_valid=lambda root, record: True,
             sync_final=lambda root, store, urls: [],
+            prepare_auth=lambda root, config, url, logger: AuthSession(mode="anonymous", source="test"),
         )
 
     def test_parser_accepts_windows_style_limit_and_modes(self):
@@ -84,7 +86,7 @@ class PipelineTests(unittest.TestCase):
     def test_limit_one_never_advances_after_first_selected_failure(self):
         downloaded_ids = []
 
-        def download(root, store, record, config, logger, position=0):
+        def download(root, store, record, config, logger, position=0, auth=None):
             downloaded_ids.append(record["id"])
             return DownloadResult(ok=False, error_kind="test", error_message="falló")
 
@@ -98,7 +100,7 @@ class PipelineTests(unittest.TestCase):
     def test_download_only_never_calls_transcriber(self):
         transcribed_ids = []
 
-        def download(root, store, record, config, logger, position=0):
+        def download(root, store, record, config, logger, position=0, auth=None):
             media = root / "downloads" / f"class_{record['id']}.mp4"
             media.parent.mkdir(parents=True, exist_ok=True)
             media.write_bytes(b"media")
@@ -189,7 +191,7 @@ class PipelineTests(unittest.TestCase):
         def bad_probe(path):
             raise ValueError("ffprobe rejected media")
 
-        def download(root, store, record, config, logger, position=0):
+        def download(root, store, record, config, logger, position=0, auth=None):
             attempted.append(record["id"])
             return DownloadResult(ok=False, error_kind="test", error_message="recuperación pendiente")
 
@@ -203,7 +205,7 @@ class PipelineTests(unittest.TestCase):
     def test_unlimited_mode_continues_after_one_download_failure(self):
         attempted = []
 
-        def download(root, store, record, config, logger, position=0):
+        def download(root, store, record, config, logger, position=0, auth=None):
             attempted.append(record["id"])
             return DownloadResult(ok=False, error_kind="test", error_message="falló")
 
