@@ -218,3 +218,21 @@ python -m pip install --upgrade yt-dlp
 ```
 
 Consulte el archivo más reciente de `logs/` y el registro correspondiente en `metadata/records/`. Los logs muestran IDs y comandos sanitizados; no contienen valores de cookies.
+
+
+## Autenticación de Zoom
+
+La opción 3 prepara la autenticación **una sola vez antes del lote**.
+
+Orden utilizado:
+
+1. reutiliza `private/zoom.cookies.txt` si ya existe y sigue válido;
+2. prueba si la URL funciona sin cookies;
+3. si necesita sesión, intenta exportar una sola vez las cookies desde Opera, Chrome, Edge o Firefox;
+4. guarda esa copia local en `private/zoom.cookies.txt` y la reutiliza para las 12 grabaciones.
+
+La carpeta `private/` está ignorada por Git y nunca debe subirse al repositorio.
+
+Esto evita abrir la base SQLite de cookies del navegador para cada clase. Si Windows informa que la base está bloqueada, ZoomTranscribe detecta procesos de navegador abiertos y **detiene los reintentos repetidos**. Si aun con los navegadores cerrados sigue bloqueada, el programa explica el fallback: exportar una sola vez las cookies de Zoom en formato Netscape a `private/zoom.cookies.txt`.
+
+La ejecución completa continúa transcribiendo cualquier video que ya exista localmente aunque no haya podido preparar la autenticación para descargar los restantes.
