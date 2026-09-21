@@ -1,1 +1,1 @@
-"""MediaTranscribe v2 application package."""
+"""MediaTranscribe application package."""
