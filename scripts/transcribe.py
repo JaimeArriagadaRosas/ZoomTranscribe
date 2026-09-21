@@ -151,15 +151,23 @@ def _attempt_transcription(
     batch_size: int = 4,
 ) -> tuple[list[Segment], object]:
     model = model_factory(model_name, device, compute_type)
-    from faster_whisper import BatchedInferencePipeline
-    
-    batched_model = BatchedInferencePipeline(model=model)
-    
-    raw_segments, info = batched_model.transcribe(
-        str(source),
-        language=language,
-        batch_size=max(1, int(batch_size)),
-    )
+    module_name = getattr(model.__class__, "__module__", "")
+    if module_name.startswith("faster_whisper"):
+        from faster_whisper import BatchedInferencePipeline
+
+        batched_model = BatchedInferencePipeline(model=model)
+        raw_segments, info = batched_model.transcribe(
+            str(source),
+            language=language,
+            batch_size=max(1, int(batch_size)),
+        )
+    else:
+        # Test/custom model factories can expose the same transcribe contract
+        # without importing the heavy faster-whisper runtime.
+        raw_segments, info = model.transcribe(
+            str(source),
+            language=language,
+        )
     
     import sys
     total_duration = getattr(info, "duration", 0)
@@ -181,6 +189,20 @@ def _attempt_transcription(
         raise ValueError("Whisper no produjo segmentos con texto")
     return segments, info
 
+
+
+def _is_gpu_memory_error(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return any(
+        marker in text
+        for marker in (
+            "out of memory",
+            "cuda_error_out_of_memory",
+            "cublas_status_alloc_failed",
+            "failed to allocate",
+            "insufficient memory",
+        )
+    )
 
 
 def _extract_flac(source: Path, target: Path, runner: Callable, logger) -> None:
@@ -322,6 +344,8 @@ def transcribe_recording(
                 except Exception as exc:
                     gpu_error = exc
                     logger.warning("CUDA batch=%s falló: %s", candidate, exc)
+                    if not _is_gpu_memory_error(exc):
+                        break
             if segments is None:
                 fallback_reason = str(gpu_error) if gpu_error else "CUDA no produjo resultado"
                 logger.warning("CUDA no fue utilizable; intentando CPU/int8")
