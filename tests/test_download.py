@@ -78,7 +78,7 @@ class DownloadTests(unittest.TestCase):
             "ERROR: Could not copy Chrome cookie database. The process cannot access the file"
         )
         self.assertEqual(error.kind, "opera_cookies_locked")
-        self.assertIn("cerrar Opera", error.message)
+        self.assertIn("base de cookies", error.message)
 
     def test_success_moves_media_and_source_metadata_to_stable_relative_paths(self):
         def runner(command, **kwargs):
