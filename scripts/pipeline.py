@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
+from .auth import AuthFailure, prepare_auth
 from .check_dependencies import load_and_validate_urls, load_config, run_preboot
 from .download import download_recording, probe_media
 from .metadata import RecordingStore
@@ -28,6 +29,7 @@ class PipelineDependencies:
     ensure_audio: Callable = ensure_mp3
     audio_valid: Callable = audio_is_valid
     sync_final: Callable = sync_final_transcripts
+    prepare_auth: Callable = prepare_auth
 
 
 def default_dependencies() -> PipelineDependencies:
@@ -40,6 +42,7 @@ def default_dependencies() -> PipelineDependencies:
         ensure_audio=ensure_mp3,
         audio_valid=audio_is_valid,
         sync_final=sync_final_transcripts,
+        prepare_auth=prepare_auth,
     )
 
 
@@ -237,8 +240,29 @@ def _run_pipeline_core(
     failures: list[tuple[str, str]] = []
     interrupted = False
 
+    auth_session = None
     if mode in ("download", "full"):
         to_download = select_records(records, "download", args.limit, root, dependencies.probe_media)
+        if to_download:
+            print("\n--- PREPARANDO AUTENTICACIÓN DE ZOOM ---")
+            try:
+                auth_session = dependencies.prepare_auth(
+                    root,
+                    config,
+                    to_download[0]["url"],
+                    logger,
+                )
+                if auth_session.mode == "anonymous":
+                    print("Autenticación: la URL funciona sin cookies.")
+                else:
+                    print(f"Autenticación: sesión preparada ({auth_session.source}).")
+                    print("Las cookies se reutilizarán durante este lote; no se volverá a abrir la base del navegador.")
+            except AuthFailure as exc:
+                print(f"[ERROR] {exc}")
+                logger.error("Autenticación de Zoom fallida: %s", exc)
+                for detail in exc.attempts:
+                    logger.debug("Auth intento: %s", detail)
+                return 3
         if to_download:
             print(f"\n--- INICIANDO FASE DE DESCARGAS ({len(to_download)} pendientes) ---")
         for record in to_download:
@@ -249,20 +273,7 @@ def _run_pipeline_core(
                 current = store.load(rid)
                 print(f"{prefix} Descargando {rid}...")
                 logger.info("%s descarga iniciada", rid)
-                result = dependencies.download(root, store, current, config, logger, position=position)
-                if (
-                    not result.ok
-                    and result.error_kind == "opera_cookies_locked"
-                    and sys.stdin.isatty()
-                ):
-                    print(f"{prefix} El navegador mantiene bloqueada su base de cookies.")
-                    print("Cierra completamente Chrome/Opera y presiona ENTER para reintentar esta misma clase.")
-                    try:
-                        input()
-                        current = store.load(rid)
-                        result = dependencies.download(root, store, current, config, logger, position=position)
-                    except (EOFError, KeyboardInterrupt):
-                        pass
+                result = dependencies.download(root, store, current, config, logger, position=position, auth=auth_session)
                 if not result.ok:
                     reason = result.error_message or "descarga fallida"
                     failures.append((rid, reason))
@@ -297,7 +308,7 @@ def _run_pipeline_core(
                     store.transition(rid, "download_failed", error=error)
                 except Exception:
                     pass
-                print(f"{prefix} Fallo inesperado; se continúa con la siguiente.")
+                print(f"{prefix} ERROR inesperado: {message}")
 
     if not interrupted and mode in ("download", "full"):
         records = [store.load(recording_id(url)) for url in urls]
