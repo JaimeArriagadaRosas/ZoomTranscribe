@@ -148,6 +148,7 @@ def _attempt_transcription(
     device: str,
     compute_type: str,
     model_factory: Callable,
+    batch_size: int = 4,
 ) -> tuple[list[Segment], object]:
     model = model_factory(model_name, device, compute_type)
     from faster_whisper import BatchedInferencePipeline
@@ -157,7 +158,7 @@ def _attempt_transcription(
     raw_segments, info = batched_model.transcribe(
         str(source),
         language=language,
-        batch_size=8,
+        batch_size=max(1, int(batch_size)),
     )
     
     import sys
@@ -283,6 +284,7 @@ def transcribe_recording(
 
     device = "cuda" if config.get("prefer_gpu", True) else "cpu"
     compute_type = "int8_float16" if device == "cuda" else "int8"
+    configured_batch = max(1, int(config.get("batch_size", 4)))
     
     try:
         segments = None
@@ -292,22 +294,58 @@ def transcribe_recording(
         _extract_flac(source, flac_path, runner, logger)
         used_flac = True
         
-        # 2. Try transcription
-        try:
-            logger.info(f"Inicializando Whisper {model_name} con {device}/{compute_type}")
-            segments, info = _attempt_transcription(
-                flac_path, model_name, language, device, compute_type, model_factory
-            )
-        except Exception as exc:
-            fallback_reason = str(exc)
-            if device == "cuda":
-                logger.warning(f"CUDA falló, intentando CPU fallback: {exc}")
+        # 2. Try GPU with progressively smaller batches; then one CPU fallback.
+        if device == "cuda":
+            gpu_batches = []
+            for candidate in (configured_batch, 2, 1):
+                if candidate not in gpu_batches and candidate <= configured_batch:
+                    gpu_batches.append(candidate)
+            gpu_error = None
+            for candidate in gpu_batches:
+                try:
+                    logger.info(
+                        "Inicializando Whisper %s con cuda/%s (batch=%s)",
+                        model_name,
+                        compute_type,
+                        candidate,
+                    )
+                    segments, info = _attempt_transcription(
+                        flac_path,
+                        model_name,
+                        language,
+                        device,
+                        compute_type,
+                        model_factory,
+                        batch_size=candidate,
+                    )
+                    break
+                except Exception as exc:
+                    gpu_error = exc
+                    logger.warning("CUDA batch=%s falló: %s", candidate, exc)
+            if segments is None:
+                fallback_reason = str(gpu_error) if gpu_error else "CUDA no produjo resultado"
+                logger.warning("CUDA no fue utilizable; intentando CPU/int8")
                 device, compute_type = "cpu", "int8"
                 segments, info = _attempt_transcription(
-                    flac_path, model_name, language, device, compute_type, model_factory
+                    flac_path,
+                    model_name,
+                    language,
+                    device,
+                    compute_type,
+                    model_factory,
+                    batch_size=1,
                 )
-            else:
-                raise
+        else:
+            logger.info("Inicializando Whisper %s con cpu/int8", model_name)
+            segments, info = _attempt_transcription(
+                flac_path,
+                model_name,
+                language,
+                device,
+                compute_type,
+                model_factory,
+                batch_size=1,
+            )
 
         txt, srt, vtt = _publish_transcripts(root, source.stem, segments)
         validate_transcript_set(resolve_relative(root, txt), resolve_relative(root, srt), resolve_relative(root, vtt))
